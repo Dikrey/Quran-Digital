@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="id" class="bg-gradient-to-b from-indigo-50 via-purple-100 to-pink-100 min-h-screen flex flex-col justify-center items-center p-4 font-sans select-none">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Arah Kiblat - Compass</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    #compass-container {
+      width: 240px;
+      height: 240px;
+      position: relative;
+      margin-bottom: 1.5rem;
+      user-select: none;
+    }
+    #compass {
+      width: 240px;
+      height: 240px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at center, #f0f4ff 0%, #d6e1ff 90%),
+        repeating-conic-gradient(
+          from 0deg,
+          #3b82f6 0deg 5deg,
+          #93c5fd 5deg 10deg
+        );
+      box-shadow:
+        0 4px 15px rgba(71, 85, 105, 0.2),
+        inset 0 0 12px rgba(59, 130, 246, 0.4);
+      border: 6px solid #3b82f6;
+      position: relative;
+    }
+    /* Tick marks on compass */
+    #compass::before {
+      content: "";
+      position: absolute;
+      inset: 12px;
+      border-radius: 50%;
+      background:
+        repeating-conic-gradient(
+          from 0deg,
+          transparent 0deg 1deg,
+          #2563eb 1deg 1.5deg
+        );
+      pointer-events: none;
+      opacity: 0.3;
+    }
+    #arrow {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      border-left: 18px solid transparent;
+      border-right: 18px solid transparent;
+      border-bottom: 90px solid #ef4444; /* sharper, lancip pointer */
+      filter: drop-shadow(0 1px 3px rgba(185, 28, 28, 0.7));
+      transform-origin: 50% 90%;
+      transform: translate(-50%, -100%) rotate(0deg);
+      transition: transform 0.2s ease-out;
+      z-index: 10;
+    }
+    #direction-text {
+      font-weight: 700;
+      font-size: 1.35rem;
+      color: #1e40af;
+      text-align: center;
+      max-width: 300px;
+      margin-bottom: 0.5rem;
+      line-height: 1.3;
+    }
+    #status {
+      font-weight: 500;
+      color: #3b82f6;
+      font-size: 1rem;
+      text-align: center;
+      min-height: 1.25rem;
+      padding: 0 8px;
+      user-select: text;
+    }
+    #location-permission {
+      max-width: 300px;
+      text-align: center;
+      font-size: 1rem;
+      color: #374151;
+      margin-bottom: 1rem;
+    }
+    button#request-permission {
+      background-color: #3b82f6;
+      color: white;
+      padding: 0.5rem 1.25rem;
+      font-weight: 700;
+      border-radius: 0.375rem;
+      box-shadow: 0 4px 8px rgb(59 130 246 / 0.4);
+      transition: background-color 0.3s ease;
+      user-select: none;
+    }
+    button#request-permission:hover {
+      background-color: #2563eb;
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+  <h1 class="text-3xl font-extrabold text-indigo-900 mb-6 text-center drop-shadow-md">
+    Arah Kiblat (Ka'bah)
+  </h1>
+
+  <div id="location-permission" role="alert" aria-live="polite">
+    Untuk menampilkan arah kiblat, izinkan akses lokasi dan sensor kompas.
+  </div>
+  <button id="request-permission" aria-label="Minta Izin Lokasi dan Sensor Kompas" type="button">
+    Izinkan Akses Sekarang
+  </button>
+
+  <div id="compass-container" class="hidden" aria-label="Kompas arah kiblat" role="img" tabindex="0">
+    <div id="compass" aria-hidden="true"></div>
+    <div id="arrow" aria-hidden="true"></div>
+  </div>
+
+  <div id="direction-text" aria-live="polite" aria-atomic="true" aria-relevant="text"></div>
+  <div id="status" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      const arrow = document.getElementById('arrow');
+      const directionText = document.getElementById('direction-text');
+      const statusText = document.getElementById('status');
+      const compassContainer = document.getElementById('compass-container');
+      const permissionInfo = document.getElementById('location-permission');
+      const btnRequestPermission = document.getElementById('request-permission');
+
+      const kaabaCoords = { lat: 21.422487, lon: 39.826206 };
+
+      let userHeading = null;
+      let smoothedHeading = null;
+      let bearingToKaaba = 0;
+      let locationGranted = false;
+      let orientationGranted = false;
+
+      function toRadians(deg) {
+        return deg * Math.PI / 180;
+      }
+
+      function toDegrees(rad) {
+        return rad * 180 / Math.PI;
+      }
+
+      function calculateBearing(lat1, lon1, lat2, lon2) {
+        const φ1 = toRadians(lat1);
+        const φ2 = toRadians(lat2);
+        const Δλ = toRadians(lon2 - lon1);
+        const y = Math.sin(Δλ) * Math.cos(φ2);
+        const x = Math.cos(φ1) * Math.sin(φ2) -
+                  Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+        let θ = Math.atan2(y, x);
+        θ = toDegrees(θ);
+        return (θ + 360) % 360; // Normalize to 0-360
+      }
+
+      // Low-pass smoothing filter for heading (alpha between 0 and 1)
+      function smoothHeading(newHeading) {
+        if (smoothedHeading === null) {
+          smoothedHeading = newHeading;
+          return smoothedHeading;
+        }
+        const diff = ((newHeading - smoothedHeading + 540) % 360) - 180;
+        smoothedHeading = (smoothedHeading + diff * 0.1 + 360) % 360;
+        return smoothedHeading;
+      }
+
+      function updateCompass() {
+        if (!locationGranted || !orientationGranted || smoothedHeading === null) {
+          return;
+        }
+        const angle = (bearingToKaaba - smoothedHeading + 360) % 360;
+        arrow.style.transform = `translate(-50%, -100%) rotate(${angle}deg)`;
+        directionText.textContent = `Arah kiblat: ${Math.round(angle)}° dari utara`;
+        statusText.textContent = 'Kompas aktif dan siap.';
+      }
+
+      function successPosition(position) {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        bearingToKaaba = calculateBearing(lat, lon, kaabaCoords.lat, kaabaCoords.lon);
+        locationGranted = true;
+        permissionInfo.textContent = '';
+        btnRequestPermission.style.display = 'none';
+        compassContainer.classList.remove('hidden');
+        directionText.textContent = 'Kalibrasi kompas...';
+        statusText.textContent = '';
+      }
+
+      function errorPosition() {
+        permissionInfo.textContent = 'Gagal mendapatkan lokasi. Aktifkan izin lokasi dan coba lagi.';
+        statusText.textContent = '';
+        directionText.textContent = '';
+      }
+
+      function handleOrientation(event) {
+        if (event.absolute === true || event.absolute === false) {
+          let heading;
+          if (event.webkitCompassHeading !== undefined) {
+            heading = event.webkitCompassHeading; // iOS native
+          } else if (event.alpha !== null) {
+            heading = 360 - event.alpha;
+          } else {
+            statusText.textContent = 'Perangkat tidak mendukung sensor orientasi.';
+            return;
+          }
+          userHeading = heading;
+          smoothedHeading = smoothHeading(userHeading);
+          orientationGranted = true;
+        } else {
+          statusText.textContent = 'Sensor orientasi tidak didukung pada perangkat ini.';
+        }
+      }
+
+      // Use requestAnimationFrame for smooth real-time updates
+      function animationLoop() {
+        updateCompass();
+        window.requestAnimationFrame(animationLoop);
+      }
+
+      function askOrientationPermission() {
+        if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
+          DeviceOrientationEvent.requestPermission()
+            .then(response => {
+              if (response === 'granted') {
+                window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+                window.addEventListener('deviceorientation', handleOrientation, true);
+                orientationGranted = true;
+                animationLoop();
+              } else {
+                permissionInfo.textContent = 'Akses sensor kompas ditolak. Arah kiblat tidak bisa ditampilkan.';
+              }
+            })
+            .catch(() => {
+              permissionInfo.textContent = 'Akses sensor kompas bermasalah.';
+            });
+        } else {
+          window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+          window.addEventListener('deviceorientation', handleOrientation, true);
+          orientationGranted = true;
+          animationLoop();
+        }
+      }
+
+      function requestPermissions() {
+        permissionInfo.textContent = 'Meminta izin lokasi...';
+        if (!navigator.geolocation) {
+          permissionInfo.textContent = 'Geolokasi tidak didukung di browser ini.';
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(successPosition, errorPosition, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        });
+        askOrientationPermission();
+      }
+
+      btnRequestPermission.addEventListener('click', () => {
+        requestPermissions();
+      });
+    })();
+  </script>
+</body>
+</html>

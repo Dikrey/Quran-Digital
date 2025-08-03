@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Waktu Sholat | Hanz</title>
+ <link rel="icon" type="image/x-icon" href="quran.png">
+ 
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          animation: {
+            'fade-in': 'fadeIn 1s ease-in-out',
+            'slide-up': 'slideUp 1s ease-out',
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          },
+          keyframes: {
+            fadeIn: {
+              '0%': { opacity: '0' },
+              '100%': { opacity: '1' }
+            },
+            slideUp: {
+              '0%': { transform: 'translateY(20px)', opacity: '0' },
+              '100%': { transform: 'translateY(0)', opacity: '1' }
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(135deg, #1a3a3a, #0f2a2a);
+      color: #e0f7fa;
+    }
+
+    .prayer-card {
+      @apply bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-500 transform hover:scale-105;
+    }
+
+    .adzan-audio {
+      display: none;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center px-4 py-10 text-center">
+
+  <!-- Header -->
+  <div class="text-center mb-10 animate__animated animate__fadeInDown" style="animation: fade-in 1s;">
+    <h1 class="text-4xl md:text-5xl font-bold text-white mb-3">🕋 Jadwal Sholat</h1>
+    <p id="location" class="text-lg text-teal-200">Mendeteksi lokasi...</p>
+    <p id="hijriDate" class="text-sm text-teal-300 mt-2"></p>
+  </div>
+
+  <!-- Prayer Times Grid -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl w-full">
+    <!-- Imsak -->
+    <div class="prayer-card animate__animated animate__slideInUp" style="animation: slide-up 1s;">
+      <h2 class="text-lg font-semibold text-yellow-300">Imsak</h2>
+      <p id="imsak" class="text-3xl font-bold text-white mt-2">--:--</p>
+    </div>
+
+    <!-- Subuh -->
+    <div class="prayer-card animate__animated animate__slideInUp" style="animation: slide-up 1.2s;">
+      <h2 class="text-lg font-semibold text-blue-300">Subuh</h2>
+      <p id="fajr" class="text-3xl font-bold text-white mt-2">--:--</p>
+    </div>
+
+    <!-- Terbit -->
+    <div class="prayer-card animate__animated animate__slideInUp" style="animation: slide-up 1.4s;">
+      <h2 class="text-lg font-semibold text-orange-300">Terbit</h2>
+      <p id="sunrise" class="text-3xl font-bold text-white mt-2">--:--</p>
+    </div>
+
+    <!-- Dzuhur -->
+    <div class="prayer-card animate__animated animate__slideInUp" style="animation: slide-up 1.6s;">
+      <h2 class="text-lg font-semibold text-green-300">Dzuhur</h2>
+      <p id="dhuhr" class="text-3xl font-bold text-white mt-2">--:--</p>
+    </div>
+
+    <!-- Ashar -->
+    <div class="prayer-card animate__animated animate__slideInUp" style="animation: slide-up 1.8s;">
+      <h2 class="text-lg font-semibold text-purple-300">Ashar</h2>
+      <p id="asr" class="text-3xl font-bold text-white mt-2">--:--</p>
+    </div>
+
+    <!-- Maghrib -->
+    <div class="prayer-card animate__animated animate__slideInUp" style="animation: slide-up 2.0s;">
+      <h2 class="text-lg font-semibold text-red-300">Maghrib</h2>
+      <p id="maghrib" class="text-3xl font-bold text-white mt-2">--:--</p>
+    </div>
+
+    <!-- Isya -->
+    <div class="prayer-card animate__animated animate__slideInUp" style="animation: slide-up 2.2s;">
+      <h2 class="text-lg font-semibold text-indigo-300">Isya</h2>
+      <p id="isha" class="text-3xl font-bold text-white mt-2">--:--</p>
+    </div>
+  </div>
+
+  <!-- Adzan Audio -->
+  <audio id="adzanAudio" class="adzan-audio">
+    <source src="https://cdn.islamic.network/adhan/1.mp3" type="audio/mpeg">
+    Your browser does not support the audio element.
+  </audio>
+
+  <!-- Loading / Error -->
+  <div id="loading" class="mt-8 text-teal-200 animate-pulse">Mengambil data...</div>
+
+  <script>
+  
+    async function getLocationName(lat, lon) {
+      const url = `/api/opencage?lat=${lat}&lon=${lon}`;
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        const locationText = data.city && data.country 
+          ? `${data.city}, ${data.country}` 
+          : `Koordinat: (${lat.toFixed(2)}, ${lon.toFixed(2)})`;
+        document.getElementById("location").textContent = `📍 Lokasi: ${locationText}`;
+      } catch (error) {
+        document.getElementById("location").textContent = "📍 Gagal mengambil nama lokasi";
+      }
+    }
+
+
+    async function getPrayerTimes(lat, lon) {
+      const url = `https://api.aladhan.com/v1/timings?latitude=${lat}&longitude=${lon}&method=2&school=1&language=id`;
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        const timings = data.data.timings;
+        const hijri = data.data.date.hijri;
+
+    
+        document.getElementById("imsak").textContent = timings.Imsak;
+        document.getElementById("fajr").textContent = timings.Fajr;
+        document.getElementById("sunrise").textContent = timings.Sunrise;
+        document.getElementById("dhuhr").textContent = timings.Dhuhr;
+        document.getElementById("asr").textContent = timings.Asr;
+        document.getElementById("maghrib").textContent = timings.Maghrib;
+        document.getElementById("isha").textContent = timings.Isha;
+        document.getElementById("hijriDate").textContent = `📅 ${hijri.day} ${hijri.month.en} ${hijri.year} H`;
+
+   
+        const audio = document.getElementById("adzanAudio");
+        const now = new Date();
+        const currentTime = `${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}`;
+        const prayerTimes = [
+          timings.Fajr,
+          timings.Dhuhr,
+          timings.Asr,
+          timings.Maghrib,
+          timings.Isha
+        ];
+
+        if (prayerTimes.includes(currentTime)) {
+          audio.play().catch(e => console.log("Auto-play terblokir:", e));
+        }
+
+      
+        document.getElementById("loading").style.display = "none";
+
+      } catch (error) {
+        console.error("Gagal mengambil jadwal sholat:", error);
+        document.getElementById("location").textContent = "⚠️ Gagal memuat jadwal sholat.";
+        document.getElementById("loading").style.display = "none";
+      }
+    }
+
+   
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          getPrayerTimes(lat, lon);
+          getLocationName(lat, lon);
+        },
+        (err) => {
+          document.getElementById("location").textContent = "❌ Gagal mendeteksi lokasi";
+          document.getElementById("loading").style.display = "none";
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      );
+    } else {
+      document.getElementById("location").textContent = "📍 Geolokasi tidak didukung";
+      document.getElementById("loading").style.display = "none";
+    }
+  </script>
+
+</body>
+</html>
