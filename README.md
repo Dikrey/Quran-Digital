@@ -1,5 +1,4 @@
 
-```markdown
 # 🌙 Quran Digital – Al-Qur'an, Tafsir & Doa Interaktif
 
 <p align="center">
